@@ -1,211 +1,268 @@
--- Awakened Hub v2
+-- Awakened Hub
+-- Ensure you have the Rayfield UI Library before using this script.
+-- Documentation: https://github.com/shlexware/Rayfield
 
-if not game:IsLoaded() then
-    game.Loaded:Wait()
-end
+local Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
 
-if not getgenv then
-    error("Incompatible executor!")
-end
+local Window = Rayfield:CreateWindow({
+    Name = "Awakened Hub",
+    LoadingTitle = "Loading Awakened Hub",
+    LoadingSubtitle = "More Games Will Be Added Soon...",
+    ConfigurationSaving = {
+        Enabled = true,
+        FolderName = "AwakenedHub", -- Folder name for saving settings
+        FileName = "UserConfig"
+    },
+    Discord = {
+        Enabled = false, -- Discord integration removed for broader compatibility
+    },
+    KeySystem = false -- No key system for easier testing and execution
+})
 
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local RunService = game:GetService("RunService")
+-- Features
+local AutoParry = false -- Variable to enable/disable Auto-Parry
+local AutoDodge = false -- Variable to enable/disable Auto-Dodge
+local Walkspeed = 16 -- Default walkspeed value
+local ESPEnabled = false -- Variable to enable/disable ESP
+local BoxesEnabled = false -- Variable to enable/disable ESP Boxes
+local TracersEnabled = false -- Variable to enable/disable ESP Tracers
+local BoxColor = Color3.new(1, 0, 0) -- Default Red for ESP Boxes
+local TracerColor = Color3.new(0, 1, 0) -- Default Green for ESP Tracers
 
--- Screen GUI
-local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
-ScreenGui.Name = "AwakenedHub"
+-- Auto-Parry Logic Variables
+local ParryCooldown = 1 -- Cooldown time for Auto-Parry in seconds
+local ParryActive = false -- Tracks whether Auto-Parry is currently active
 
-local Frame = Instance.new("Frame", ScreenGui)
-Frame.Size = UDim2.new(0, 300, 0, 500)
-Frame.Position = UDim2.new(0, 10, 0, 100)
-Frame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Frame.BorderSizePixel = 0
-Frame.Active = true
-Frame.Draggable = true
+-- Auto-Dodge Logic Variables
+local DodgeDistance = 10 -- Distance to dodge away from projectiles or attacks
+local DodgeCooldown = 1 -- Cooldown time for Auto-Dodge in seconds
+local DodgeActive = false -- Tracks whether Auto-Dodge is currently active
 
--- Chroma Animation Label
-local ChromaLabel = Instance.new("TextLabel", Frame)
-ChromaLabel.Position = UDim2.new(0, 10, 0, 10)
-ChromaLabel.Size = UDim2.new(0, 280, 0, 40)
-ChromaLabel.BackgroundTransparency = 1
-ChromaLabel.Text = "Awakened Hub"
-ChromaLabel.Font = Enum.Font.SourceSansBold
-ChromaLabel.TextSize = 28
-ChromaLabel.TextStrokeTransparency = 0.5
-ChromaLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+-- ESP Logic Variables
+local ESPUpdateInterval = 0.1 -- Time interval to refresh ESP visuals
+local ESPObjects = {} -- Table to store ESP objects (Boxes and Tracers)
 
--- Chroma Animation
-task.spawn(function()
-    while task.wait() do
-        local hue = tick() % 5 / 5
-        ChromaLabel.TextColor3 = Color3.fromHSV(hue, 1, 1)
-    end
-end)
+-- Auto-Parry Section
+Window:CreateSection("Combat")
 
--- Buttons layout
-local ButtonY = 60
-local function CreateButton(name, callback, enabled)
-    local button = Instance.new("TextButton", Frame)
-    button.Size = UDim2.new(0, 280, 0, 40)
-    button.Position = UDim2.new(0, 10, 0, ButtonY)
-    button.BackgroundColor3 = enabled and Color3.fromRGB(40, 40, 40) or Color3.fromRGB(70, 70, 70)
-    button.TextColor3 = Color3.new(1, 1, 1)
-    button.Font = Enum.Font.SourceSansBold
-    button.TextSize = 20
-    button.Text = name
-    button.MouseButton1Click:Connect(callback)
-    
-    ButtonY = ButtonY + 50
-    return button
-end
-
--- Variables
-local ESPEnabled = false
-local ESPColor = Color3.fromRGB(255, 0, 0)
-local BoxColor = Color3.fromRGB(255, 0, 0)
-local TracerColor = Color3.fromRGB(255, 0, 0)
-local AutoParryEnabled = false
-local AutoDodgeEnabled = false
-local WalkSpeedValue = 16
-
--- ESP creation
-function CreateESP(player)
-    if player == LocalPlayer then return end
-    if not player.Character then return end
-    local highlight = Instance.new("Highlight", player.Character)
-    highlight.FillColor = BoxColor
-    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-
-    if ESPEnabled then
-        local tracer = Instance.new("Part", player.Character)
-        tracer.Size = Vector3.new(0.2, 0.2, (player.Character.HumanoidRootPart.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude)
-        tracer.Anchored = true
-        tracer.CFrame = CFrame.new(LocalPlayer.Character.HumanoidRootPart.Position, player.Character.HumanoidRootPart.Position)
-        tracer.Color = TracerColor
-    end
-end
-
--- Auto-Parry
-CreateButton("Toggle Auto-Parry", function()
-    AutoParryEnabled = not AutoParryEnabled
-end)
-
-RunService.RenderStepped:Connect(function()
-    if not AutoParryEnabled then return end
-    local Ball = workspace:FindFirstChild("Ball")
-    if Ball and Ball:FindFirstChild("Velocity") then
-        local distance = (Ball.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-        if distance < 25 and Ball.Velocity.Magnitude > 10 then
-            local args = {[1] = true}
-            game:GetService("ReplicatedStorage").Remotes.Parry:FireServer(unpack(args))
+Window:CreateToggle({
+    Name = "Auto-Parry",
+    CurrentValue = false,
+    Flag = "AutoParry",
+    Callback = function(Value)
+        AutoParry = Value
+        if AutoParry then
+            Rayfield:Notify({
+                Title = "Auto-Parry Enabled",
+                Content = "The script will now automatically parry incoming attacks.",
+                Duration = 5
+            })
+        else
+            Rayfield:Notify({
+                Title = "Auto-Parry Disabled",
+                Content = "Auto-Parry is now turned off.",
+                Duration = 5
+            })
         end
     end
-end)
+})
 
--- Auto-Dodge
-CreateButton("Toggle Auto-Dodge", function()
-    AutoDodgeEnabled = not AutoDodgeEnabled
-end)
+-- ESP Section
+Window:CreateSection("Visuals")
 
-RunService.RenderStepped:Connect(function()
-    if not AutoDodgeEnabled then return end
-    local Ball = workspace:FindFirstChild("Ball")
-    if Ball then
-        local distance = (Ball.Position - LocalPlayer.Character.HumanoidRootPart.Position).Magnitude
-        if distance < 20 then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 0, 5)
-        end
-    end
-end)
+Window:CreateButton({
+    Name = "Enable ESP",
+    Callback = function()
+        ESPEnabled = not ESPEnabled
+        if ESPEnabled then
+            for _, player in pairs(game:GetService("Players"):GetPlayers()) do
+                if player ~= game:GetService("Players").LocalPlayer then
+                    -- Add ESP Box
+                    if BoxesEnabled then
+                        local box = Instance.new("BoxHandleAdornment")
+                        box.Adornee = player.Character
+                        box.Size = Vector3.new(4, 6, 4)
+                        box.Color3 = BoxColor
+                        box.Transparency = 0.5
+                        box.AlwaysOnTop = true
+                        box.Parent = player.Character:FindFirstChild("HumanoidRootPart")
+                        table.insert(ESPObjects, box) -- Store the box in ESPObjects
+                    end
 
--- WalkSpeed Slider
-CreateButton("WalkSpeed", function()
-    local input = tonumber(game:GetService("Players").LocalPlayer:PromptInput("Enter WalkSpeed (1-200):"))
-    if input and input >= 1 and input <= 200 then
-        WalkSpeedValue = input
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
-            LocalPlayer.Character.Humanoid.WalkSpeed = WalkSpeedValue
-        end
-    end
-end)
-
--- ESP Toggles
-local espButton = CreateButton("Toggle ESP", function()
-    ESPEnabled = not ESPEnabled
-    if ESPEnabled then
-        espBoxButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-        espTracerButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    else
-        espBoxButton.TextColor3 = Color3.fromRGB(100, 100, 100)
-        espTracerButton.TextColor3 = Color3.fromRGB(100, 100, 100)
-        espBoxButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-        espTracerButton.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-    end
-end, true)
-
-local espBoxButton = CreateButton("Toggle Boxes", function()
-    if ESPEnabled then
-        -- Toggle Boxes logic here
-    end
-end, false)
-
-local espTracerButton = CreateButton("Toggle Tracers", function()
-    if ESPEnabled then
-        -- Toggle Tracers logic here
-    end
-end, false)
-
--- Set Colors
-CreateButton("Set ESP Color", function()
-    local input = game:GetService("Players").LocalPlayer:PromptInput("Enter RGB (e.g., 255,0,0):")
-    if input then
-        local r, g, b = string.match(input, "(%d+),(%d+),(%d+)")
-        if r and g and b then
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if r and g and b and r <= 255 and g <= 255 and b <= 255 then
-                ESPColor = Color3.fromRGB(r, g, b)
+                    -- Add ESP Tracers
+                    if TracersEnabled then
+                        local tracer = Drawing.new("Line")
+                        tracer.From = Vector2.new(workspace.CurrentCamera.ViewportSize.X / 2, workspace.CurrentCamera.ViewportSize.Y) -- Bottom center of screen
+                        tracer.To = workspace.CurrentCamera:WorldToViewportPoint(player.Character.HumanoidRootPart.Position)
+                        tracer.Color = TracerColor
+                        tracer.Thickness = 1
+                        tracer.Visible = true
+                        table.insert(ESPObjects, tracer) -- Store the tracer in ESPObjects
+                    end
+                end
             end
-        end
-    end
-end)
 
-CreateButton("Set Box Color", function()
-    local input = game:GetService("Players").LocalPlayer:PromptInput("Enter RGB (e.g., 255,0,0):")
-    if input then
-        local r, g, b = string.match(input, "(%d+),(%d+),(%d+)")
-        if r and g and b then
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if r and g and b and r <= 255 and g <= 255 and b <= 255 then
-                BoxColor = Color3.fromRGB(r, g, b)
+            Rayfield:Notify({
+                Title = "ESP Enabled",
+                Content = "ESP is now active. Use the options below to customize it.",
+                Duration = 5
+            })
+        else
+            -- Cleanup ESP Objects
+            for _, obj in pairs(ESPObjects) do
+                if typeof(obj) == "Instance" then
+                    obj:Destroy()
+                elseif typeof(obj) == "Drawing" then
+                    obj:Remove()
+                end
             end
+            ESPObjects = {}
+
+            Rayfield:Notify({
+                Title = "ESP Disabled",
+                Content = "ESP has been turned off.",
+                Duration = 5
+            })
         end
     end
-end)
+})
 
-CreateButton("Set Tracer Color", function()
-    local input = game:GetService("Players").LocalPlayer:PromptInput("Enter RGB (e.g., 255,0,0):")
-    if input then
-        local r, g, b = string.match(input, "(%d+),(%d+),(%d+)")
-        if r and g and b then
-            r, g, b = tonumber(r), tonumber(g), tonumber(b)
-            if r and g and b and r <= 255 and g <= 255 and b <= 255 then
-                TracerColor = Color3.fromRGB(r, g, b)
+Window:CreateButton({
+    Name = "Toggle ESP Boxes",
+    Callback = function()
+        if ESPEnabled then
+            BoxesEnabled = not BoxesEnabled
+            if BoxesEnabled then
+                Rayfield:Notify({
+                    Title = "ESP Boxes Enabled",
+                    Content = "You will now see ESP boxes around players.",
+                    Duration = 5
+                })
+            else
+                Rayfield:Notify({
+                    Title = "ESP Boxes Disabled",
+                    Content = "ESP boxes have been turned off.",
+                    Duration = 5
+                })
             end
+        else
+            Rayfield:Notify({
+                Title = "ESP Not Enabled",
+                Content = "Enable ESP first to use this feature.",
+                Duration = 5
+            })
         end
     end
-end)
+})
 
--- Unload Awakened Hub
-CreateButton("Unload Awakened Hub", function()
-    ScreenGui:Destroy()
-end)
+Window:CreateButton({
+    Name = "Toggle ESP Tracers",
+    Callback = function()
+        if ESPEnabled then
+            TracersEnabled = not TracersEnabled
+            if TracersEnabled then
+                Rayfield:Notify({
+                    Title = "ESP Tracers Enabled",
+                    Content = "You will now see tracers pointing to players.",
+                    Duration = 5
+                })
+            else
+                Rayfield:Notify({
+                    Title = "ESP Tracers Disabled",
+                    Content = "ESP tracers have been turned off.",
+                    Duration = 5
+                })
+            end
+        else
+            Rayfield:Notify({
+                Title = "ESP Not Enabled",
+                Content = "Enable ESP first to use this feature.",
+                Duration = 5
+            })
+        end
+    end
+})
 
--- QUICK UNLOAD
-CreateButton("QUICK UNLOAD", function()
-    LocalPlayer:Kick("Quick Unloaded!")
-end)
+Window:CreateColorPicker({
+    Name = "Box Color",
+    Color = BoxColor,
+    Flag = "BoxColorPicker",
+    Callback = function(Value)
+        BoxColor = Value
+        Rayfield:Notify({
+            Title = "Box Color Updated",
+            Content = "ESP Box color has been set to your chosen color.",
+            Duration = 5
+        })
+    end
+})
 
-print("Awakened Hub v2 Loaded Successfully.")
+Window:CreateColorPicker({
+    Name = "Tracer Color",
+    Color = TracerColor,
+    Flag = "TracerColorPicker",
+    Callback = function(Value)
+        TracerColor = Value
+        Rayfield:Notify({
+            Title = "Tracer Color Updated",
+            Content = "ESP Tracer color has been set to your chosen color.",
+            Duration = 5
+        })
+    end
+})
 
-More Will Be added so keep watch and if you have any questions just DM 2kclu on Discord
+-- Auto-Dodge Section
+Window:CreateToggle({
+    Name = "Auto-Dodge",
+    CurrentValue = false,
+    Flag = "AutoDodge",
+    Callback = function(Value)
+        AutoDodge = Value
+        if AutoDodge then
+            Rayfield:Notify({
+                Title = "Auto-Dodge Enabled",
+                Content = "The script will now automatically dodge incoming attacks.",
+                Duration = 5
+            })
+        else
+            Rayfield:Notify({
+                Title = "Auto-Dodge Disabled",
+                Content = "Auto-Dodge is now turned off.",
+                Duration = 5
+            })
+        end
+    end
+})
+
+-- Walkspeed Slider
+Window:CreateSection("Player")
+
+Window:CreateSlider({
+    Name = "Walkspeed",
+    Range = {16, 100},
+    Increment = 1,
+    Suffix = "Speed",
+    CurrentValue = 16,
+    Flag = "WalkspeedSlider",
+    Callback = function(Value)
+        Walkspeed = Value
+        game:GetService("Players").LocalPlayer.Character.Humanoid.WalkSpeed = Walkspeed
+    end
+})
+
+-- Insta-Unload Button
+Window:CreateSection("Utility")
+
+Window:CreateButton({
+    Name = "Insta-Unload Script",
+    Callback = function()
+        Rayfield:Unload()
+    end
+})
+
+Rayfield:Notify({
+    Title = "Awakened Hub Loading",
+    Content = "Awakened Hub Is Now Loaded!",
+    Duration = 5
+})
+More will be added so keep watch and if you have any questions just DM 2kclu on Discord
